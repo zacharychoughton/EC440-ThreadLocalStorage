@@ -221,8 +221,56 @@ int tls_read(unsigned int offset, unsigned int length, char *buffer){
     return 1; 
 }
 
-int tls_write(unsigned int offset, unsigned int length, const char *buffer){
-    return 1; 
+int tls_write(unsigned int offset, unsigned int length, const char *buffer) {
+    pthread_t TID = pthread_self();
+    Item* element = find_item(TID);
+
+    if (element == NULL) {
+        return -1;
+    }
+
+    ThreadLocalStorage* TLS = element->tls;
+
+    if ((offset + length) > TLS->size) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&mutex);
+
+    for (int i = 0; i < TLS->page_num; i++) {
+        tls_unprotect(TLS->pages[i], PROT_WRITE);
+    }
+
+    for (int count = 0, index = offset; index < (offset + length); ++count, ++index) {
+        Page *page, *page_copy;
+        unsigned int page_number = index / page_size;
+        unsigned int page_offset = index % page_size;
+        page = TLS->pages[page_number];
+
+        if (page->ref_count > 1) {
+            page_copy = (Page *)malloc(sizeof(Page));
+            page_copy->address = (unsigned long int)mmap(0, page_size, PROT_WRITE, (MAP_ANON | MAP_PRIVATE), 0, 0);
+            memcpy((void *)page_copy->address, (void *)page->address, page_size);
+            page_copy->ref_count = 1;
+            TLS->pages[page_number] = page_copy;
+
+            (page->ref_count)--;
+            tls_protect(page);
+
+            page = page_copy;
+        }
+
+        char *page_byte = (char *)(page->address + page_offset);
+        *page_byte = buffer[count];
+    }
+
+    for (int i = 0; i < TLS->page_num; i++) {
+        tls_protect(TLS->pages[i]);
+    }
+
+    pthread_mutex_unlock(&mutex);
+
+    return 0;
 }
 
 int tls_clone(pthread_t tid){

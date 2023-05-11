@@ -308,6 +308,34 @@ int tls_write(unsigned int offset, unsigned int length, const char *buffer) {
     return 0;
 }
 
-int tls_clone(pthread_t tid){
-    return 1; 
+int tls_clone(pthread_t tid) {
+    pthread_t clone_tid = pthread_self();
+    Item* clone_element = find_item(clone_tid);
+    Item* target_element = find_item(tid);
+
+    if (clone_element != NULL || target_element == NULL) {
+        return -1;
+    }
+
+    ThreadLocalStorage* targetTLS = target_element->tls;
+
+    clone_element = (Item *)malloc(sizeof(Item));
+    clone_element->tid = clone_tid;
+
+    clone_element->tls = (ThreadLocalStorage *)malloc(sizeof(ThreadLocalStorage));
+    clone_element->tls->page_num = targetTLS->page_num;
+    clone_element->tls->size = targetTLS->size;
+
+    clone_element->tls->pages = (Page **)calloc(clone_element->tls->page_num, sizeof(Page *));
+
+    for (int i = 0; i < clone_element->tls->page_num; i++) {
+        clone_element->tls->pages[i] = targetTLS->pages[i];
+        (clone_element->tls->pages[i]->ref_count)++;
+    }
+
+    if (add_item(clone_element)) {
+        return 0;
+    } else {
+        return -1;
+    }
 }

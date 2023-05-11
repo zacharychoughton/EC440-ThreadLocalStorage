@@ -135,6 +135,20 @@ static void tls_init() {
     pthread_mutex_init(&mutex, NULL);
 }
 
+static void tls_protect(Page* p) {
+    if (mprotect((void *)p->address, page_size, PROT_NONE)) {
+        fprintf(stderr, "tls_protect: could not protect page\n");
+        exit(1);
+    }
+}
+
+static void tls_unprotect(Page* p, const int protect) {
+    if (mprotect((void *)p->address, page_size, protect)) {
+        fprintf(stderr, "tls_unprotect: could not unprotect page\n");
+        exit(1);
+    }
+}
+
 
 // tls_Functions: 
 int tls_create(unsigned int size) {

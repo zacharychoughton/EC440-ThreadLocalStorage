@@ -217,8 +217,43 @@ int tls_destroy() {
     return 0;
 }
 
-int tls_read(unsigned int offset, unsigned int length, char *buffer){
-    return 1; 
+int tls_read(unsigned int offset, unsigned int length, char *buffer) {
+    pthread_t TID = pthread_self();
+    Item* element = find_item(TID);
+
+    if (element == NULL) {
+        return -1;
+    }
+
+    ThreadLocalStorage* TLS = element->tls;
+
+    if ((offset + length) > TLS->size) {
+        return -1;
+    }
+
+    pthread_mutex_lock(&mutex);
+
+    for (int i = 0; i < TLS->page_num; i++) {
+        tls_unprotect(TLS->pages[i], PROT_READ);
+    }
+
+    for (int count = 0, index = offset; index < (offset + length); ++count, ++index) {
+        Page* page;
+        unsigned int page_number = index / page_size;
+        unsigned int page_offset = index % page_size;
+        page = TLS->pages[page_number];
+
+        char *page_byte = (char *)(page->address + page_offset);
+        buffer[count] = *page_byte;
+    }
+
+    for (int i = 0; i < TLS->page_num; i++) {
+        tls_protect(TLS->pages[i]);
+    }
+
+    pthread_mutex_unlock(&mutex);
+
+    return 0;
 }
 
 int tls_write(unsigned int offset, unsigned int length, const char *buffer) {
